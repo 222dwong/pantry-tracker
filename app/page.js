@@ -7,77 +7,142 @@ import { deleteDoc, getDocs, setDoc, collection, doc, query, getDoc } from 'fire
 
 export default function Home() {
   const [inventory, setInventory] = useState([])
-  const [open, setOpen] = useState(false)
-  const [itemName, setItemName] = useState('') 
-  
+  const [openAdd, setOpenAdd] = useState(false)
+  const [openEdit, setOpenEdit] = useState(false)
+  const [itemName, setItemName] = useState('')
+  const [selectedItem, setSelectedItem] = useState('')
+  const [newQuantity, setNewQuantity] = useState('')
+
   const updateInventory = async () => {
-    const snapshot = query(collection(firestore, 'inventory'))
-    const docs = await getDocs(snapshot)
-    const inventoryList = []
-    docs.forEach((doc) => {
-      inventoryList.push({
-        name: doc.id,
-        ...doc.data(),
+    try {
+      const snapshot = query(collection(firestore, 'inventory'))
+      const docs = await getDocs(snapshot)
+      const inventoryList = []
+      docs.forEach((doc) => {
+        inventoryList.push({
+          name: doc.id,
+          ...doc.data(),
+        })
       })
-    })
-    setInventory(inventoryList)
+      setInventory(inventoryList)
+    } catch (error) {
+      console.error('Error updating inventory:', error)
+    }
   }
 
   const removeItem = async (item) => {
-    const docRef = doc(collection(firestore, 'inventory'), item)
-    const docSnap = await getDoc(docRef)
+    try {
+      const docRef = doc(firestore, 'inventory', item)
+      const docSnap = await getDoc(docRef)
 
-    if (docSnap.exists()) {
-      const { quantity } = docSnap.data()
-      if (quantity == 1) {
-        await deleteDoc(docRef)
-      } else {
-        await setDoc(docRef, { quantity: quantity - 1 })
+      if (docSnap.exists()) {
+        const { quantity } = docSnap.data()
+        if (quantity === 1) {
+          await deleteDoc(docRef)
+        } else {
+          await setDoc(docRef, { quantity: quantity - 1 }, { merge: true })
+        }
       }
-    }
 
-    await updateInventory()
+      await updateInventory()
+    } catch (error) {
+      console.error('Error removing item:', error)
+    }
   }
 
   const addItem = async (item) => {
-    const docRef = doc(collection(firestore, 'inventory'), item)
-    const docSnap = await getDoc(docRef)
+    try {
+      const docRef = doc(firestore, 'inventory', item)
+      const docSnap = await getDoc(docRef)
 
-    if (docSnap.exists()) {
-      const { quantity } = docSnap.data()
-      await setDoc(docRef, { quantity: quantity + 1 })
-    } else {
-      await setDoc(docRef, { quantity: 1 })
+      if (docSnap.exists()) {
+        const { quantity } = docSnap.data()
+        await setDoc(docRef, { quantity: quantity + 1 }, { merge: true })
+      } else {
+        await setDoc(docRef, { quantity: 1 })
+      }
+
+      await updateInventory()
+    } catch (error) {
+      console.error('Error adding item:', error)
     }
+  }
 
-    await updateInventory()
+  const editItem = async () => {
+    try {
+      const quantity = parseInt(newQuantity, 10)
+  
+      if (quantity < 0) {
+        console.error('Quantity cannot be negative.')
+        return
+      }
+  
+      const docRef = doc(firestore, 'inventory', selectedItem)
+  
+      if (quantity === 0) {
+        await deleteDoc(docRef)
+      } else {
+        await setDoc(docRef, { quantity }, { merge: true })
+      }
+  
+      await updateInventory()
+    } catch (error) {
+      console.error('Error editing item:', error)
+    }
   }
 
   useEffect(() => {
     updateInventory()
   }, [])
 
-  const handleOpen = () => setOpen(true)
-  const handleClose = () => setOpen(false)
+  const handleOpenAdd = () => setOpenAdd(true)
+  const handleCloseAdd = () => setOpenAdd(false)
+  const handleOpenEdit = (itemName) => {
+    setSelectedItem(itemName)
+    setOpenEdit(true)
+  }
+  const handleCloseEdit = () => setOpenEdit(false)
 
   return (
     <Box width="100vw" height="100vh" display="flex" flexDirection="column" justifyContent="center" alignItems="center" gap={2}>
-      <Modal open={open} onClose={handleClose}>
+      {/* Add Item Modal */}
+      <Modal open={openAdd} onClose={handleCloseAdd}>
         <Box position="absolute" top="50%" left="50%" transform="translate(-50%, -50%)" width={400} bgcolor="white" border="2px solid #000" boxShadow={24} p={4} display="flex" flexDirection="column" gap={3}>
           <Typography variant="h6">Add Item</Typography>
           <Stack width="100%" direction="row" spacing={2}>
-            <TextField variant="outlined" fullWidth value={itemName} onChange={(e) => {
-              setItemName(e.target.value)
-            }}></TextField>
+            <TextField variant="outlined" fullWidth value={itemName} onChange={(e) => setItemName(e.target.value)} />
             <Button variant="outlined" onClick={() => {
               addItem(itemName)
               setItemName('')
-              handleClose()
+              handleCloseAdd()
             }}>Add</Button>
           </Stack>
         </Box>
       </Modal>
-      <Button variant="contained" onClick={handleOpen}>Add New Item</Button>
+
+      {/* Edit Item Modal */}
+      <Modal open={openEdit} onClose={handleCloseEdit}>
+        <Box position="absolute" top="50%" left="50%" transform="translate(-50%, -50%)" width={400} bgcolor="white" border="2px solid #000" boxShadow={24} p={4} display="flex" flexDirection="column" gap={3}>
+          <Typography variant="h6">Edit Item Quantity</Typography>
+          <Stack width="100%" direction="row" spacing={2}>
+            <TextField
+              variant="outlined"
+              fullWidth
+              type="number"
+              value={newQuantity}
+              onChange={(e) => setNewQuantity(e.target.value)}
+              placeholder="New quantity"
+            />
+            <Button variant="outlined" onClick={() => {
+              editItem()
+              setNewQuantity('')
+              handleCloseEdit()
+            }}>Update</Button>
+          </Stack>
+        </Box>
+      </Modal>
+
+      <Button variant="contained" onClick={handleOpenAdd}>Add New Item</Button>
       <Box border="1px solid #333">
         <Box width="800px" height="100px" bgcolor="#ADD8E6" display="flex" alignItems="center" justifyContent="center">
           <Typography variant="h2" color="#333">Inventory Item</Typography>
@@ -93,12 +158,9 @@ export default function Home() {
                   {quantity}
                 </Typography>
                 <Stack direction="row" spacing={2}>
-                <Button variant="contained" onClick={() => {
-                  addItem(name)
-                }}>Add</Button>
-                <Button variant="contained" onClick={() => {
-                  removeItem(name)
-                }}>Remove</Button>
+                  <Button variant="contained" onClick={() => handleOpenEdit(name)}>Edit</Button>
+                  <Button variant="contained" onClick={() => addItem(name)}>Add</Button>
+                  <Button variant="contained" onClick={() => removeItem(name)}>Remove</Button>
                 </Stack>
               </Box>
             ))
